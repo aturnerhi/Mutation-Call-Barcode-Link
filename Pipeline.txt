@@ -1,0 +1,162 @@
+#combine and compare
+paste -d'   ' ReverseBestBarcodes.txt ForwardBestBarcodes.txt > FwdvsRev.txt
+awk '{if($1 == $2) print}' < FwdvsRev.txt > IdenticalR1_R2Barcodes.txt
+
+##Pull WT Spike barcodes
+egrep -c "GACCTGATATCTCCAGCTGA|TAGTCCGGAGGAATGCATAG|AGCTGACGTCTAGGGGTTAC|AACACCGGGTGTGGACACGG|GTTGGAAGCATGTTCGAATT|TAGTGATGGATATAGTTGAG|GCGGTTAACCTGCTCCGGTA" IdenticalR1_R2Barcodes.txt 
+## This is the number of barcodes that code for the WT spike
+
+
+
+
+######################################################################################
+Create reverse complement first
+
+tr -d '[[:space:]]' < Reverse_Comp.fasta > Test.txt
+sed 's/>/\n>/g' Test.txt > Tile3_R2.fasta
+sed -i 's/reversecomplement/\n/g' Tile3_R2.fasta
+
+
+egrep -B1 "CTTATCAGT...................." Tile3_R2.fasta > Reverse_CompleteBC.txt
+egrep -B1 "CTTATCAGT...................." ./Tile3_S2_L001_R1_001.fastq > Forward_CompleteBC.txt
+
+##########For first test run ONLY! Do NOT close end of barcode! For future runs, clip with start and end of barcode padlock ###############
+
+sed -i 's/1:N:0:.*$//g' Forward_CompleteBC.txt
+sed -i 's/2:N:0:.*$//g' Reverse_CompleteBC.txt
+
+ sed -i 's/^[A-Z]*CTTATCAGT/CTTATCAGT/g' Reverse_CompleteBC.txt
+  sed -i 's/^[A-Z]*CTTATCAGT/CTTATCAGT/g' Forward_CompleteBC.txt
+
+sed -i 's/TGCGGCCGCATACTAGTCTCAG.*/TGCG/g' Reverse_CompleteBC.txt
+sed -i 's/TGCGGCCGCATACTAGTCTCAG.*/TGCG/g' Forward_CompleteBC.txt
+
+## for first test run ONLY! Do the following step to trim: 
+sed -i 's/CTCCTGTTCGACAGTCTCCTGTTCGACAGT//g' Forward_CompleteBC.txt
+sed -i 's/CTCCTGTTCGACAGTCTCCTGTTCGACAGT//g' Reverse_CompleteBC.txt
+
+##open a new terminal and do not pipe to file
+ grep -B1 -o -P "CTTATCAGT.{0,20}" Forward_CompleteBC.txt
+##print terminal output and clean - this is your trimmed barcodes
+
+ grep -B1 -o -P "CTTATCAGT.{0,20}" Reverse_CompleteBC.txt
+
+sed -i 's/CTTAT/\nCTTAT/g' Reverse_CompleteBCtrimmed.txt
+sed -i 's/ /\n/1' Forward_CompleteBCtrimmed.txt
+
+sed -i 's/CTTATCAGT//g' Reverse_CompleteBCtrimmed.txt
+sed -i 's/CTTATCAGT//g' Forward_CompleteBCtrimmed.txt
+
+
+## Sorts and prints only duplicated barcodes, with the number of times they were duplicated
+sort Forward_CompleteBCtrimmed.txt | uniq -cd | sort -nr > Forward_DuplicateCounts.txt
+sort Reverse_CompleteBCtrimmed.txt | uniq -cd | sort -nr > Reverse_DuplicateCounts.txt
+
+egrep "GACCTGATATCTCCAGCTGA|TAGTCCGGAGGAATGCATAG|AGCTGACGTCTAGGGGTTAC|AACACCGGGTGTGGACACGG|GTTGGAAGCATGTTCGAATT|TAGTGATGGATATAGTTGAG|GCGGTTAACCTGCTCCGGTA" Forward_DuplicateCounts.txt
+##prints the counts of WT sequences 
+
+ wc -l Forward_DuplicateCounts.txt
+## prints how many barcodes out of the total are duplicates
+##nano and remove total count from the top of this file
+
+sum=0
+for num in $(cat Reverse_DuplicateCounts.txt)
+    do
+        ((sum+=num))
+done
+echo $sum
+
+##this gives you how many reads are duplicate by adding all counts from the first column
+##add up WT and divide by this number to tell you how many of your duplicates are due to your WT running, helpful! 
+
+python python.py > Output.txt
+ egrep -A2 ">" Output.txt > Comparison.txt
+
+grep -A2 "+>" Comparison.txt > UniqueFwdBC.txt
+grep -A2 "\->" Comparison.txt > UniqueRevBC.txt
+grep -A2 " >" Comparison.txt > DoubleBC.txt
+grep -B2 " [A-Z]" DoubleBC.txt > ConfirmedDoubleBC.txt
+
+egrep -c "GACCTGATATCTCCAGCTGA|TAGTCCGGAGGAATGCATAG|AGCTGACGTCTAGGGGTTAC|AACACCGGGTGTGGACACGG|GTTGGAAGCATGTTCGAATT|TAGTGATGGATATAGTTGAG|GCGGTTAACCTGCTCCGGTA" ConfirmedDoubleBC_Check.txt
+## tells you how many of these good double coverage reads encoded WT 
+
+ grep -v "M0" ConfirmedDoubleBC_Check.txt > test1.txt
+sort -u test1.txt > test2.txt
+wc -l test2.txt 
+##This is how many unique double confirmed barcodes we've got
+## CONSIDER PULLING THE REVERSE BARCODE READS AS WELL, THEY ARE GOING TO BE HIGH QUALITY
+
+grep "M0" ConfirmedDoubleBC_Check.txt > BarcodeNames.txt
+sed -i 's/>//g' BarcodeNames.txt
+sed -i 's/.*M0/@M0/g' BarcodeNames.txt
+##open as a text file and remove all unknown characters and trailers
+fgrep -A1 -f BarcodeNames.txt Tile3_S2_L001_R1_001.fastq > Barcode-Variant.fasta
+fgrep -A1 -f BarcodeNames.txt Tile3_R2.fastq > Barcode-Variant-Rev.fasta
+
+##good place to count and make sure you pulled the same number of reads as you had names - your names should be perfect and unique, no reason to not have equal numbers
+
+sed -i '/--/d' Barcode-Variant*
+sed -i 's/.:N:0:.*$//g' Barcode-Variant*
+
+grep -B1 -o -P "ATTTTCT.{0,145}" Barcode-Variant.fasta
+##pulls tile3 sequences from Forward Reads that have a perfect barcode already
+
+
+sed -i '/--/d' Forward_Variant.txt
+sed -i 's/\ /\n/1' Forward_Variant.txt
+sed 's/@/>/g' Forward_Variant.txt > Forward_Variant.fasta
+
+##upload to java site and translate, then copy 
+
+dos2unix Forward_Variant_Translated.txt
+sed -i '/^\s*$/d' Forward_Variant_Translated.txt
+sed -i '/1: /d' Forward_Variant_Translated.txt
+sed -i '/>M/d' Forward_Variant_Translated.txt
+sed -i 's/Translation\ of://g' Forward_Variant_Translated.txt
+sed -i 's/ //g' Forward_Variant_Translated.txt
+sed -i 's/^M/>M/1' Forward_Variant_Translated.txt
+grep -v "ATTTT" Forward_Variant_Translated.txt > Forward_VariantTranslatedTrimmed.txt
+sed -i '/^\s*$/d' Forward_VariantTranslatedTrimmed.txt
+perl -lne "length > 2 && print" Forward_VariantTranslatedTrimmed.txt > Forward_VariantTranslatedTrimmed2.txt
+sed -i 's/:181:0000000000-KHVC4:5354//g' Forward_VariantTranslatedTrimmed2.txt
+##This file has your read names and their translations
+
+grep -B1 "IFCLDYIIFTLRLIHIFTVSRNLGPKIIMLQRMLIDVFFFLFLFAV" Forward_VariantTranslatedTrimmed2.txt > WT_Var_Reads.txt
+grep ">" WT_Var_Reads.txt > WT_Var_ReadNames.txt
+sed -i '/^\s*$/d' WT_Var_ReadNames.txt 
+sed -i '/--/d' WT_Var_ReadNames.txt
+sed -i 's/ //g' WT_Var_ReadNames.txt
+
+
+egrep -B2 "GACCTGATATCTCCAGCTGA|TAGTCCGGAGGAATGCATAG|AGCTGACGTCTAGGGGTTAC|AACACCGGGTGTGGACACGG|GTTGGAAGCATGTTCGAATT|TAGTGATGGATATAGTTGAG|GCGGTTAACCTGCTCCGGTA" ConfirmedDoubleBC_Check.txt > WT_BC_Reads.txt
+grep ">" WT_BC_Reads.txt > WT_BC_ReadNames.txt
+sed -i '/^\s*$/d' WT_BC_ReadNames.txt 
+sed -i '/--/d' WT_BC_ReadNames.txt
+sed -i 's/ //g' WT_BC_ReadNames.txt
+
+fgrep -v -f WT_Var_ReadNames.txt WT_BC_ReadNames.txt > WTSeqsNOTWTBCs.txt
+fgrep -f WT_Var_ReadNames.txt WT_BC_ReadNames.txt > WTSeqs+WTBCs.txt
+##Pulls variants that have a WT sequence and compares them to the barcodes that are known WT
+
+grep -v "*" Forward_VariantTranslatedTrimmed2.txt > Forward_VariantTranslatedTrimmed3.txt
+grep -v "X" Forward_VariantTranslatedTrimmed3.txt > Forward_VariantTranslatedTrimmed4.txt
+sed -i '/>MM.*$/d' Forward_VariantTranslatedTrimmed4.txt
+grep -B1 "^[A-Z]" Forward_VariantTranslatedTrimmed4.txt > Forward_VariantTranslatedTrimmed5.txt
+ sed -i '/--/d' Forward_VariantTranslatedTrimmed5.txt
+##remove ambiguous amino acids
+
+grep ">M" Forward_VariantTranslatedTrimmed5.txt > Variant_Names.txt
+fgrep -A2 -f Variant_Names.txt ConfirmedDoubleBC_Check.txt > Variant_BCsequence.txt
+dos2unix Variant_BCsequence.txt
+sed -i '/--/d' Variant_BCsequence.txt
+sed -i 's/ //g' Variant_BCsequence.txt
+##manually remove odd characters with Notepad 
+sed -i '/^\s*$/d' Variant_BCsequence.txt
+
+paste -d'   ' Variant_BCsequence.txt Forward_VariantTranslatedTrimmed5.txt > Outfile.txt
+##This outfile has your barcode sequence + variant translated and the read name, all next to each other 
+
+
+
+
+
